@@ -7,12 +7,14 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.icu.util.Calendar;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 
@@ -32,6 +34,7 @@ public class MainActivity extends AppCompatActivity {
     TimePickerDialog.OnTimeSetListener timeSetListener;
     Calendar calendar;
 
+    @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -39,57 +42,61 @@ public class MainActivity extends AppCompatActivity {
 
         tvContador = findViewById(R.id.tvContador);
         btnHorario = findViewById(R.id.btnHorario);
-        intent = new Intent(this, BroadcastService.class);
-
-        btnHorario.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                TimePicker timePicker = new TimePicker(getApplicationContext());
-
-                Toast.makeText(getApplicationContext(), "clique", Toast.LENGTH_SHORT).show();
 
 
-                try {
-                    btnHorario.setOnClickListener(new View.OnClickListener() {
-                        @RequiresApi(api = Build.VERSION_CODES.N)
+        TimePicker timePicker = new TimePicker(getApplicationContext());
+
+        Toast.makeText(getApplicationContext(), "clique", Toast.LENGTH_SHORT).show();
+
+        //verifica permissões
+        if (!Settings.System.canWrite(getApplicationContext())) {
+            Intent mIntent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
+            mIntent.setData(Uri.parse("package:" + getApplicationContext().getPackageName()));
+            startActivity(mIntent);
+        }
+        try {
+            btnHorario.setOnClickListener(new View.OnClickListener() {
+                @RequiresApi(api = Build.VERSION_CODES.N)
+                @Override
+                public void onClick(View v) {
+                    timeSetListener = new TimePickerDialog.OnTimeSetListener() {
                         @Override
-                        public void onClick(View v) {
-                            timeSetListener = new TimePickerDialog.OnTimeSetListener() {
-                                @Override
-                                public void onTimeSet(TimePicker view, int hourOfDay, int minute) {
-                                    calendar = Calendar.getInstance();
-                                    int hora = calendar.get(Calendar.HOUR_OF_DAY);
-                                    int minuto = calendar.get(Calendar.MINUTE);
-
-                                    int minutoTotal = ((hourOfDay * 60) + minute) - ((hora * 60) + minuto);
-
-                                    //minuto maior que zero impede que usuario escolha uma hora anterior a atual
-                                    if (minutoTotal > 0) {
-                                        long mili = minutoTotal * 1000;
-                                        btnHorario.setText("" + hourOfDay + ":" + minute + " Minutos para desligamento: " + minutoTotal);
-
-                                        SharedPreferences sharedPreferences = getSharedPreferences(getPackageName(),MODE_PRIVATE);
-                                        sharedPreferences.edit().putLong("time",mili).apply();
-                                        startService(intent);
-                                        Log.i(TAG, "Started Service");
-                                    }
-                                    else{
-                                        btnHorario.setText("Hora errada: "+minutoTotal);
-                                    }
-                                }
-                            };
+                        public void onTimeSet(TimePicker view, int hourOfDay, int minute) {
                             calendar = Calendar.getInstance();
-                            new TimePickerDialog(MainActivity.this, timeSetListener, calendar.get(Calendar.HOUR_OF_DAY),
-                                    calendar.get(Calendar.MINUTE), true).show();
+                            int hora = calendar.get(Calendar.HOUR_OF_DAY);
+                            int minuto = calendar.get(Calendar.MINUTE);
 
+                            int minutoTotal = ((hourOfDay * 60) + minute) - ((hora * 60) + minuto);
+
+                            //minuto maior que zero impede que usuario escolha uma hora anterior a atual
+                            if (minutoTotal >= 0) {
+                                stopService(new Intent(MainActivity.this, BroadcastService.class)); //para o serviço em background se tiver executando
+
+                                long mili = minutoTotal * 60000;
+                                btnHorario.setText("" + hourOfDay + ":" + minute + " Minutos para desligamento: " + minutoTotal);
+
+                                SharedPreferences sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
+                                sharedPreferences.edit().putLong("time", mili).apply();
+
+                                intent = new Intent(MainActivity.this, BroadcastService.class); //cria o broadcastService com o tempo selecionado atribuido no sharedPreferences
+
+                                startService(intent); //inicia o broadcast service
+                                Log.i(TAG, "Started Service");
+                            } else {
+                                btnHorario.setText("Hora errada: " + minutoTotal);
+                            }
                         }
-                    });
+                    };
+                    calendar = Calendar.getInstance();
+                    new TimePickerDialog(MainActivity.this, timeSetListener, calendar.get(Calendar.HOUR_OF_DAY),
+                            calendar.get(Calendar.MINUTE), true).show();
 
-                } catch (Exception e) {
-                    Log.d("Erro", e.toString());
-                } //TimePicker
-            }
-        });
+                }
+            });
+
+        } catch (Exception e) {
+            Log.d("Erro", e.toString());
+        } //TimePicker
     }
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -140,11 +147,11 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "Countdown seconds remaining:" + milisegundos / 1000);
             tvContador.setText(Long.toString(milisegundos / 1000));
 
-            SharedPreferences sharedPreferences = getSharedPreferences(getPackageName(),MODE_PRIVATE);
+            SharedPreferences sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
 
-            sharedPreferences.edit().putLong("time",milisegundos).apply();
+            sharedPreferences.edit().putLong("time", milisegundos).apply();
 
-            if(milisegundos <= 0){
+            if (milisegundos <= 0) {
                 Toast.makeText(this, "Acabou", Toast.LENGTH_SHORT).show();
                 stopService(new Intent(this, BroadcastService.class));
             }
