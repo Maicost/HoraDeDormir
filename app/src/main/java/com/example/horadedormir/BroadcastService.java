@@ -46,6 +46,7 @@ public class BroadcastService extends Service {
             @RequiresApi(api = Build.VERSION_CODES.O)
             @Override
             public void onFinish() {
+                //local do codigo ao final do contador
                 countDownTimer.cancel();
                 Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT, 0); //altera o tempo de suspensão, não é exatamente o que quero
             }
